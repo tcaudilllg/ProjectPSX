@@ -139,7 +139,7 @@ namespace ProjectPSX {
                 Console.WriteLine("Input emulator speed as percent of max:");
                 string input = Console.ReadLine();
                 try {
-                    emuPercentage = float.Parse(input);
+                    emuPercentage = float.Parse(input) * (float)0.01;
                 }
                 catch (FormatException) {
                     Console.WriteLine($"Unable to parse '{input}'");
