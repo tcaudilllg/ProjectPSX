@@ -8,6 +8,8 @@ namespace ProjectPSX {
         static public int polycaptureCounter;
         static public int frameCounter;
         static public int capframes;
+        static public bool GTEprecapture;
+        static public bool GPUprecapture;
         static public bool capturingGTE;
         static public bool capturingGPU;
         static public bool emuPaused;
@@ -48,6 +50,18 @@ namespace ProjectPSX {
                 cpu.handleInterrupts();
             }
             Globals.frameCounter++;  // this is where to figure out frame numbers for tools that need it
+            if (Globals.GTEprecapture)
+            {
+                Globals.frameCounter = 0;
+                Globals.capturingGTE = true;
+                Globals.GTEprecapture = false;
+            }
+            if (Globals.GPUprecapture)
+            {
+                Globals.frameCounter = 0;
+                Globals.capturingGPU = true;
+                Globals.GPUprecapture = false;
+            }
             if (Globals.frameCounter == Globals.capframes) {
                 if (Globals.capturingGTE) {
                     Globals.capturingGTE = false;

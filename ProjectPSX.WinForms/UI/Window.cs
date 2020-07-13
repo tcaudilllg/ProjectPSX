@@ -160,15 +160,13 @@ namespace ProjectPSX {
             }
             else
             if (e.KeyCode == Keys.F7) {
-                Console.WriteLine("GTE polygon calculating logged for " + Globals.capframes + " frames");
-                Globals.frameCounter = 0;
-                Globals.capturingGTE = true;
+                Console.WriteLine("GTE polygon calculating log scheduled for " + Globals.capframes + " frames");
+                Globals.GTEprecapture = true;
             }
             else
             if (e.KeyCode == Keys.F8) {
-                Console.WriteLine("GPU poly raster activity logged for " + Globals.capframes + " frames");
-                Globals.frameCounter = 0;
-                Globals.capturingGPU = true;
+                Console.WriteLine("GPU poly raster activity log scheduled for " + Globals.capframes + " frames");
+                Globals.GPUprecapture = true;
             }
             else
             if (e.KeyCode == Keys.F9) {
