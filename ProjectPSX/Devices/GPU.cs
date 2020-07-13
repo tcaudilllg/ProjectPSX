@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -577,6 +577,25 @@ namespace ProjectPSX.Devices {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void rasterizeTri(Point2D v0, Point2D v1, Point2D v2, TextureData t0, TextureData t1, TextureData t2, uint c0, uint c1, uint c2, uint palette, uint texpage, Primitive primitive) {
 
+            if (Globals.capturingGPU) {  // GPU logging
+
+                string coords =
+                    "#Face\n"
+                    + "v " + v0.x + " " + v0.y + "\n"
+                    + "v " + v1.x + " " + v1.y + "\n"
+                    + "v " + v2.x + " " + v2.y + "\n";
+
+                Globals.GPUVerticesFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
+
+                coords =
+                    "#Face\n"
+                    + "v " + t0.x + " " + t0.y + "\n"
+                    + "v " + t1.x + " " + t1.y + "\n"
+                    + "v " + t2.x + " " + t2.y + "\n";
+
+                Globals.GPUTexcoordsFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
+            }
+
             int area = orient2d(v0, v1, v2);
 
             if (area == 0) {
@@ -624,7 +643,7 @@ namespace ProjectPSX.Devices {
             if (primitive.isTextured) {
                 depth = (int)(texpage >> 7) & 0x3;
 
-                clut.x = (short)((palette & 0x3f) << 4);
+                clut.x = (short)((palette & 0x3f) << 4);  // indexed palette coordinates
                 clut.y = (short)((palette >> 6) & 0x1FF);
 
                 textureBase.x = (short)((texpage & 0xF) << 6);
