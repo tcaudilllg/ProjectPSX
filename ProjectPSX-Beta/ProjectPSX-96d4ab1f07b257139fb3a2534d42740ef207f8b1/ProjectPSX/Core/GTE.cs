@@ -1,72 +1,107 @@
 ﻿using System;
-using System.Runtime.InteropServices;
 
 namespace ProjectPSX {
     class GTE { //PSX MIPS Coprocessor 02 - Geometry Transformation Engine
 
-        private struct Matrix {
+        struct Matrix {
             public Vector3 v1;
             public Vector3 v2;
             public Vector3 v3;
         }
 
-        [StructLayout(LayoutKind.Explicit)]
-        private struct Vector3 {
-            [FieldOffset(0)] public uint XY;
-            [FieldOffset(0)] public short x;
-            [FieldOffset(2)] public short y;
-            [FieldOffset(4)] public short z;
+        struct Vector3 {
+            public short x;
+            public short y;
+            public short z;
+
+            public Vector3(short x, short y, short z) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            }
+
+            // Vector 3 must be manipulated with 2 seperate ops
+            public uint XY {  // this makes 32bit YyXx value
+                get { return ((uint)(ushort)y << 16) | (uint)(ushort)x; }
+                set { y = (short)(value >> 16); x = (short)value; }
+            }
+            public uint OZ {  // 16-bit Z value
+                get { return (uint)z; }
+                set { z = (short)value; }
+            }
         }
 
+        struct Vector2 {
+            public short x;
+            public short y;
 
-        [StructLayout(LayoutKind.Explicit)]
-        private struct Vector2 {
-            [FieldOffset(0)] public uint val;
-            [FieldOffset(0)] public short x;
-            [FieldOffset(2)] public short y;
+            public uint get() {
+                return ((uint)(ushort)y << 16 | (uint)(ushort)x);
+            }
+            public void set(uint value) {
+                x = (short)(value & 0x0000_FFFF);
+                y = (short)((value & 0xFFFF_0000) >> 16);
+            }
         }
 
-        [StructLayout(LayoutKind.Explicit)]
-        private struct Color {
-            [FieldOffset(0)] public uint val;
-            [FieldOffset(0)] public byte r;
-            [FieldOffset(1)] public byte g;
-            [FieldOffset(2)] public byte b;
-            [FieldOffset(3)] public byte c;
+        struct Color {
+            public byte r;
+            public byte g;
+            public byte b;
+            public byte c;
+
+            public uint get() {
+                return (uint)(c << 24 | b << 16 | g << 8 | r);
+            }
+            public void set(uint value) {
+                r = (byte)(value & 0x0000_00FF);
+                g = (byte)((value & 0x0000_FF00) >> 8);
+                b = (byte)((value & 0x00FF_0000) >> 16);
+                c = (byte)((value & 0xFF00_0000) >> 24);
+            }// more
         }
 
         //Data Registers
-        private Vector3[] V = new Vector3[3];   //R0-1 R2-3 R4-5 s16
-        private Color RGBC;                     //R6
-        private ushort OTZ;                     //R7
-        private short[] IR = new short[4];      //R8-11
-        private Vector2[] SXY = new Vector2[4]; //R12-15 FIFO
-        private ushort[] SZ = new ushort[4];    //R16-19 FIFO
-        private Color[] RGB = new Color[3];     //R20-22 FIFO
-        private uint RES1;                      //R23 prohibited
-        private int MAC0;                       //R24
-        private int MAC1, MAC2, MAC3;           //R25-27
-        private ushort IRGB;//, ORGB;           //R28-29 Orgb is readonly and read by irgb
-        private int LZCS, LZCR;                 //R30-31
+        // poly vertex
+        Vector3[] V = new Vector3[3];   //R0-1 R2-3 R4-5 s16
+        // poly color w/transparency
+        Color RGBC;                     //R6
+        ushort OTZ;                     //R7
+        short[] IR = new short[4];      //R8-11
+        // holds 32-bit plane value
+        Vector2[] SXY = new Vector2[4]; //R12-15 FIFO
+        // holds 16-bit depth value
+        ushort[] SZ = new ushort[4];    //R16-19 FIFO
+        // holds texture pixel value
+        Color[] RGB = new Color[3];     //R20-22 FIFO
+        // doesn't do anything
+        uint RES1;                      //R23 prohibited
+        int MAC0;                       //R24
+        int MAC1, MAC2, MAC3;           //R25-27
+        ushort IRGB, ORGB;              //R28-29
+        int LZCS, LZCR;                 //R30-31
 
         //Control Registers
-        private Matrix RT, LM, LRGB;        //R32-36 R40-44 R48-52
-        private int TRX, TRY, TRZ;          //R37-39
-        private int RBK, GBK, BBK;          //R45-47
-        private int RFC, GFC, BFC;          //R53-55
-        private int OFX, OFY, DQB;          //R56 57 60
-        private ushort H;                   //R58
-        private short ZSF3, ZSF4, DQA;      //R61 62 59
-        private uint FLAG;                  //R63
+        Matrix RT, LM, LRGB;        //R32-36 R40-44 R48-52
+        int TRX, TRY, TRZ;          //R37-39
+        int RBK, GBK, BBK;          //R45-47
+        int RFC, GFC, BFC;          //R53-55
+        int OFX, OFY, DQB;          //R56 57 60
+        ushort H;                   //R58
+        short ZSF3, ZSF4, DQA;      //R61 62 59
+        uint FLAG;                  //R63
 
         //Command decode
-        private int sf;                     //Shift fraction (0 or 12)
-        private uint MVMVA_M_Matrix;         //MVMVA Multiply Matrix    (0=Rotation. 1=Light, 2=Color, 3=Reserved)
-        private uint MVMVA_M_Vector;         //MVMVA Multiply Vector    (0=V0, 1=V1, 2=V2, 3=IR/long)
-        private uint MVMVA_T_Vector;         //MVMVA Translation Vector (0=TR, 1=BK, 2=FC/Bugged, 3=None)
-        private bool lm;                     //Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
-        private uint opcode;                 //GTE opcode
-        private CPU cpu;
+        int sf;                     //Shift fraction (0 or 12)
+        uint MVMVA_M_Matrix;         //MVMVA Multiply Matrix    (0=Rotation. 1=Light, 2=Color, 3=Reserved)
+        uint MVMVA_M_Vector;         //MVMVA Multiply Vector    (0=V0, 1=V1, 2=V2, 3=IR/long)
+        uint MVMVA_T_Vector;         //MVMVA Translation Vector (0=TR, 1=BK, 2=FC/Bugged, 3=None)
+        bool lm;                     //Saturate IR1,IR2,IR3 result (0=To -8000h..+7FFFh, 1=To 0..+7FFFh)
+        uint opcode;                 //GTE opcode
+        CPU cpu;
+
+        bool dumpTriggered;
+
         public GTE(CPU cpu) {//this is only needed for temporary debug purposes till TGTE passes
             this.cpu = cpu;
         }
@@ -80,7 +115,20 @@ namespace ProjectPSX {
             opcode = command & 0x3F;
         }
         internal void execute(uint command) {
-            //Console.WriteLine($"GTE EXECUTE {(command & 0x3F):x2}");
+            //Console.WriteLine("GTE EXECUTE" + (command & 0x3F).ToString("x8"));
+
+            // [Sector] -> [RAM] -> [GTE]
+
+            // So here's what we do.
+            // * when register loaded, remember RAM addr from where it was loaded. Call this the reg addr.
+            // * when GTE command executes, store program counter to GTE Shadow RAM.
+            // * when vsync is ready, increment frame count
+            // [frame]:[$PC] [command] [result] [reg addr] [sector]
+            //
+            // Each RAM byte has an associated origin sector.
+            // CDSectorRAMAssoc[addr] = DMA_sector
+            //
+            // file_out(frameCounter & ":" & progCounter & " " & GTECmdStr & " " & regVal & " " & regAddr & " " & CDSectorRAMAssoc[regAddr]);
 
             decodeCommand(command);
             FLAG = 0;
@@ -108,7 +156,7 @@ namespace ProjectPSX {
                 case 0x3D: GPF(); break;
                 case 0x3E: GPL(); break;
                 case 0x3F: NCCT(); break;
-                default: Console.WriteLine($"UNIMPLEMENTED GTE COMMAND {opcode:x2}"); break;/* throw new NotImplementedException();*/
+                default: Console.WriteLine("UNIMPLEMENTED GTE COMMAND" + opcode.ToString("x2")); break;/* throw new NotImplementedException();*/
             }
 
             if ((FLAG & 0x7F87_E000) != 0) {
@@ -132,9 +180,26 @@ namespace ProjectPSX {
             MAC2 = (int)(setMAC(2, (long)RGBC.g * IR[2]) << 4);
             MAC3 = (int)(setMAC(3, (long)RGBC.b * IR[3]) << 4);
 
-            interpolateColor(MAC1, MAC2, MAC3);
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;< --- for NCDx only
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
 
-            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE]
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, (long)IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, (long)IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, (long)IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
             RGB[1] = RGB[2];
 
@@ -142,6 +207,10 @@ namespace ProjectPSX {
             RGB[2].g = setRGB(2, MAC2 >> 4);
             RGB[2].b = setRGB(3, MAC3 >> 4);
             RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
         private void CC() {
@@ -191,9 +260,26 @@ namespace ProjectPSX {
             MAC2 = (int)(setMAC(2, RGBC.g * IR[2]) << 4);
             MAC3 = (int)(setMAC(3, RGBC.b * IR[3]) << 4);
 
-            interpolateColor(MAC1, MAC2, MAC3);
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
 
-            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE]
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
             RGB[1] = RGB[2];
 
@@ -201,6 +287,10 @@ namespace ProjectPSX {
             RGB[2].g = setRGB(2, MAC2 >> 4);
             RGB[2].b = setRGB(3, MAC3 >> 4);
             RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
         private void NCCS(int r) {
@@ -269,9 +359,26 @@ namespace ProjectPSX {
             MAC2 = (int)(setMAC(2, g) << 16);
             MAC3 = (int)(setMAC(3, b) << 16);
 
-            interpolateColor(MAC1, MAC2, MAC3);
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
 
-            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE]
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
             RGB[1] = RGB[2];
 
@@ -279,17 +386,39 @@ namespace ProjectPSX {
             RGB[2].g = setRGB(2, MAC2 >> 4);
             RGB[2].b = setRGB(3, MAC3 >> 4);
             RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
         private void INTPL() {
             // [MAC1, MAC2, MAC3] = [IR1, IR2, IR3] SHL 12               ;<--- for INTPL only
+
             MAC1 = (int)setMAC(1, (long)IR[1] << 12);
             MAC2 = (int)setMAC(2, (long)IR[2] << 12);
             MAC3 = (int)setMAC(3, (long)IR[3] << 12);
 
-            interpolateColor(MAC1, MAC2, MAC3);
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
 
-            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE]
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);
+            MAC1 = (int)setMAC(1, MAC1 >> sf * 12);
+            MAC2 = (int)setMAC(2, MAC2 >> sf * 12);
+            MAC3 = (int)setMAC(3, MAC3 >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
             RGB[1] = RGB[2];
 
@@ -297,6 +426,10 @@ namespace ProjectPSX {
             RGB[2].g = setRGB(2, MAC2 >> 4);
             RGB[2].b = setRGB(3, MAC3 >> 4);
             RGB[2].c = RGBC.c;
+
+            IR[1] = setIR(1, MAC1, lm);
+            IR[2] = setIR(2, MAC2, lm);
+            IR[3] = setIR(3, MAC3, lm);
         }
 
         private void NCT() {
@@ -342,9 +475,8 @@ namespace ProjectPSX {
             IR[3] = setIR(3, MAC3, lm);
         }
 
-        //int matrix;
         private void MVMVA() { //WIP
-            //Console.WriteLine("[GTE] MVMVA " + ++matrix);
+            //Console.WriteLine("[GTE] MVMVA");
             //Mx = matrix specified by mx; RT / LLM / LCM - Rotation, light or color matrix
             //Vx = vector specified by v; V0, V1, V2, or[IR1, IR2, IR3]
             //Tx = translation vector specified by cv; TR or BK or Bugged / FC, or None
@@ -382,7 +514,7 @@ namespace ProjectPSX {
                 case 0: return V[0];
                 case 1: return V[1];
                 case 2: return V[2];
-                case 3: return new Vector3() { x = IR[1], y = IR[2], z = IR[3] };
+                case 3: return new Vector3(IR[1], IR[2], IR[3]);
                 default: Console.WriteLine("[GTE] Unhandled M Vector " + MVMVA_M_Matrix); return new Vector3();
             }
         }
@@ -406,9 +538,9 @@ namespace ProjectPSX {
             long mac2 = (long)MAC2 << sf * 12;
             long mac3 = (long)MAC3 << sf * 12;
 
-            MAC1 = (int)(setMAC(1, IR[1] * IR[0] + mac1) >> sf * 12); //this is a good example of why setMac cant return int directly
-            MAC2 = (int)(setMAC(2, IR[2] * IR[0] + mac2) >> sf * 12); //as you cant >> before cause it dosnt triggers the flags and if
-            MAC3 = (int)(setMAC(3, IR[3] * IR[0] + mac3) >> sf * 12); //you do it after you get wrong values
+            MAC1 = (int)(setMAC(1, IR[1] * IR[0] + mac1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, IR[2] * IR[0] + mac2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, IR[3] * IR[0] + mac3) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
@@ -485,7 +617,7 @@ namespace ProjectPSX {
             //MAC0 = ZSF3 * (SZ1 + SZ2 + SZ3); for AVSZ3
             //OTZ = MAC0 / 1000h;for both(saturated to 0..FFFFh)
             long avsz3 = (long)ZSF3 * (SZ[1] + SZ[2] + SZ[3]);
-            MAC0 = setMAC0(avsz3);
+            MAC0 = (int)setMAC0(avsz3);
             OTZ = setSZ3(avsz3 >> 12);
         }
 
@@ -493,14 +625,17 @@ namespace ProjectPSX {
             //MAC0 = ZSF4 * (SZ0 + SZ1 + SZ2 + SZ3);for AVSZ4
             //OTZ = MAC0 / 1000h;for both(saturated to 0..FFFFh)
             long avsz4 = (long)ZSF4 * (SZ[0] + SZ[1] + SZ[2] + SZ[3]);
-            MAC0 = setMAC0(avsz4);
+            MAC0 = (int)setMAC0(avsz4);
             OTZ = setSZ3(avsz4 >> 12);
         }
 
-        private void NCDS(int r) {
-            //Normal color depth cue (single vector) //329048 WIP FLAGS
+        //private int ncdsTest;
+        private void NCDS(int r) { //Normal color depth cue (single vector) //329048 WIP FLAGS
             //In: V0 = Normal vector(for triple variants repeated with V1 and V2),
             //BK = Background color, RGBC = Primary color / code, LLM = Light matrix, LCM = Color matrix, IR0 = Interpolation value.
+            //ncdsTest++;
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+                          //    + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (LLM * V0) SAR(sf * 12)
             MAC1 = (int)(setMAC(1, (long)LM.v1.x * V[r].x + LM.v1.y * V[r].y + LM.v1.z * V[r].z) >> sf * 12);
@@ -512,7 +647,7 @@ namespace ProjectPSX {
             IR[3] = setIR(3, MAC3, lm);
 
             //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
-            //             + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
+                 //             + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
 
             // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3] = (BK * 1000h + LCM * IR) SAR(sf * 12)
             // WARNING each multiplication can trigger mac flags so the check is needed on each op! Somehow this only affects the color matrix and not the light one
@@ -524,14 +659,36 @@ namespace ProjectPSX {
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
 
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+            //                  + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
+
+            //FLAG CALC FAILS FROM HERE
+
             // [MAC1, MAC2, MAC3] = [R * IR1, G * IR2, B * IR3] SHL 4;< --- for NCDx / NCCx
-            MAC1 = (int)setMAC(1, ((long)RGBC.r * IR[1]) << 4);
-            MAC2 = (int)setMAC(2, ((long)RGBC.g * IR[2]) << 4);
-            MAC3 = (int)setMAC(3, ((long)RGBC.b * IR[3]) << 4);
+            MAC1 = (int)(setMAC(1, (long)RGBC.r * IR[1]) << 4);
+            MAC2 = (int)(setMAC(2, (long)RGBC.g * IR[2]) << 4);
+            MAC3 = (int)(setMAC(3, (long)RGBC.b * IR[3]) << 4);
 
-            interpolateColor(MAC1, MAC2, MAC3);
+            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;< --- for NCDx only
+            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
+            //Details on "MAC+(FC-MAC)*IR0":
+            //[IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
+            //[MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
 
-            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE]
+            IR[1] = setIR(1, ((RFC << 12) - MAC1) >> sf * 12, false);
+            IR[2] = setIR(2, ((GFC << 12) - MAC2) >> sf * 12, false);
+            IR[3] = setIR(3, ((BFC << 12) - MAC3) >> sf * 12, false);
+
+            MAC1 = (int)setMAC(1, (long)IR[1] * IR[0] + MAC1);
+            MAC2 = (int)setMAC(2, (long)IR[2] * IR[0] + MAC2);
+            MAC3 = (int)setMAC(3, (long)IR[3] * IR[0] + MAC3);
+
+            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
+            MAC1 = (int)(setMAC(1, MAC1) >> sf * 12);
+            MAC2 = (int)(setMAC(2, MAC2) >> sf * 12);
+            MAC3 = (int)(setMAC(3, MAC3) >> sf * 12);
+
+            // Color FIFO = [MAC1 / 16, MAC2 / 16, MAC3 / 16, CODE], [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
             RGB[0] = RGB[1];
             RGB[1] = RGB[2];
 
@@ -539,55 +696,29 @@ namespace ProjectPSX {
             RGB[2].g = setRGB(2, MAC2 >> 4);
             RGB[2].b = setRGB(3, MAC3 >> 4);
             RGB[2].c = RGBC.c;
-        }
-
-        private void interpolateColor(int mac1, int mac2, int mac3) {
-            // PSX SPX is very convoluted about this and it lacks some info
-            // [MAC1, MAC2, MAC3] = MAC + (FC - MAC) * IR0;< --- for NCDx only
-            // Note: Above "[IR1,IR2,IR3]=(FC-MAC)" is saturated to - 8000h..+7FFFh(ie. as if lm = 0)
-            // Details on "MAC+(FC-MAC)*IR0":
-            // [IR1, IR2, IR3] = (([RFC, GFC, BFC] SHL 12) - [MAC1, MAC2, MAC3]) SAR(sf * 12)
-            // [MAC1, MAC2, MAC3] = (([IR1, IR2, IR3] * IR0) + [MAC1, MAC2, MAC3])
-            // [MAC1, MAC2, MAC3] = [MAC1, MAC2, MAC3] SAR(sf * 12);< --- for NCDx / NCCx
-            // [IR1, IR2, IR3] = [MAC1, MAC2, MAC3]
-
-            MAC1 = (int)(setMAC(1, ((long)RFC << 12) - mac1) >> sf * 12);
-            MAC2 = (int)(setMAC(2, ((long)GFC << 12) - mac2) >> sf * 12);
-            MAC3 = (int)(setMAC(3, ((long)BFC << 12) - mac3) >> sf * 12);
-
-            IR[1] = setIR(1, MAC1, false);
-            IR[2] = setIR(2, MAC2, false);
-            IR[3] = setIR(3, MAC3, false);
-
-            MAC1 = (int)(setMAC(1, ((long)IR[1] * IR[0]) + mac1) >> sf * 12);
-            MAC2 = (int)(setMAC(2, ((long)IR[2] * IR[0]) + mac2) >> sf * 12);
-            MAC3 = (int)(setMAC(3, ((long)IR[3] * IR[0]) + mac3) >> sf * 12);
 
             IR[1] = setIR(1, MAC1, lm);
             IR[2] = setIR(2, MAC2, lm);
             IR[3] = setIR(3, MAC3, lm);
+
+            //Console.WriteLine("NCDS " + ncdsTest + " " + MAC1.ToString("x8") + " " + MAC2.ToString("x8") + " " + MAC3.ToString("x8") + " " + (sf * 12).ToString("x1")
+                  //            + " " + IR[0].ToString("x4") + " " + IR[1].ToString("x4") + " " + IR[2].ToString("x4") + " " + IR[3].ToString("x4") + " " + FLAG.ToString("x8"));
         }
 
         private void NCLIP() { //Normal clipping
             // MAC0 =   SX0*SY1 + SX1*SY2 + SX2*SY0 - SX0*SY2 - SX1*SY0 - SX2*SY1
-            MAC0 = setMAC0((long)SXY[0].x * SXY[1].y + SXY[1].x * SXY[2].y + SXY[2].x * SXY[0].y - SXY[0].x * SXY[2].y - SXY[1].x * SXY[0].y - SXY[2].x * SXY[1].y);
+            MAC0 = (int)setMAC0((long)SXY[0].x * SXY[1].y + SXY[1].x * SXY[2].y + SXY[2].x * SXY[0].y - SXY[0].x * SXY[2].y - SXY[1].x * SXY[0].y - SXY[2].x * SXY[1].y);
         }
-        private int setMAC0(long value) {
+        private long setMAC0(long value) {
             if (value < -0x8000_0000) {
                 FLAG |= 0x8000;
             } else if (value > 0x7FFF_FFFF) {
                 FLAG |= 0x1_0000;
             }
-            return (int)value;
+            return value;
         }
 
         private void RTPT() { //Perspective Transformation Triple
-
-            if (Globals.capturingGTE) {  // GTE logging
-                string coords = "#Face (frame " + Globals.frameCounter + ")\n";
-                Globals.GTEFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
-            }
-
             RTPS(0);
             RTPS(1);
             RTPS(2);
@@ -597,13 +728,6 @@ namespace ProjectPSX {
             //IR1 = MAC1 = (TRX*1000h + RT11*VX0 + RT12*VY0 + RT13*VZ0) SAR (sf*12)
             //IR2 = MAC2 = (TRY*1000h + RT21*VX0 + RT22*VY0 + RT23*VZ0) SAR (sf*12)
             //IR3 = MAC3 = (TRZ*1000h + RT31*VX0 + RT32*VY0 + RT33*VZ0) SAR (sf*12)
-
-            if (Globals.capturingGTE) {  // GTE logging
-
-                    string coords = "v " + V[r].x + " " + V[r].y + " " + V[r].z + "\n";
-
-                    Globals.GTEFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
-            }
 
             MAC1 = (int)setMAC(1, (TRX * 0x1000 + RT.v1.x * V[r].x + RT.v1.y * V[r].y + RT.v1.z * V[r].z) >> (sf * 12));
             MAC2 = (int)setMAC(2, (TRY * 0x1000 + RT.v2.x * V[r].x + RT.v2.y * V[r].y + RT.v2.z * V[r].z) >> (sf * 12));
@@ -632,7 +756,7 @@ namespace ProjectPSX {
             if (SZ[3] == 0) {
                 result = 0x1FFFF;
             } else {
-                div = (((long)H * 0x20000 / SZ[3]) + 1) / 2;
+                div = (long)(((H * 0x20000 / SZ[3]) + 1) / 2);
 
                 if (div > 0x1FFFF) {
                     result = 0x1FFFF;
@@ -642,11 +766,11 @@ namespace ProjectPSX {
                 }
             }
 
-            MAC0 = (int)(result * IR[1] + OFX);
+            MAC0 = (int)(long)(result * IR[1] + OFX);
             SXY[2].x = setSXY(2, MAC0 / 0x10000);
-            MAC0 = (int)(result * IR[2] + OFY);
+            MAC0 = (int)(long)(result * IR[2] + OFY);
             SXY[2].y = setSXY(2, MAC0 / 0x10000);
-            MAC0 = (int)(result * DQA + DQB);
+            MAC0 = (int)(long)(result * DQA + DQB);
             IR[0] = setIR0(MAC0 / 0x1000);
 
 
@@ -659,18 +783,22 @@ namespace ProjectPSX {
             if (value < 0) {
                 FLAG |= 0x1000;
                 return 0;
-            } else if (value > 0x1000) {
+            }
+
+            if (value > 0x1000) {
                 FLAG |= 0x1000;
                 return 0x1000;
             }
 
             return (short)value;
         }
-        private short setSXY(int i, int value) {
+        private short setSXY(int i, int value) { //this is wrong as values are pased individually! i is x y not 1 2 3
             if (value < -0x400) {
                 FLAG |= (uint)(0x4000 >> (i - 1));
                 return -0x400;
-            } else if (value > 0x3FF) {
+            }
+
+            if (value > 0x3FF) {
                 FLAG |= (uint)(0x4000 >> (i - 1));
                 return 0x3FF;
             }
@@ -681,7 +809,9 @@ namespace ProjectPSX {
             if (value < 0) {
                 FLAG |= 0x4_0000;
                 return 0;
-            } else if (value > 0xFFFF) {
+            } else
+
+            if (value > 0xFFFF) {
                 FLAG |= 0x4_0000;
                 return 0xFFFF;
             }
@@ -693,7 +823,9 @@ namespace ProjectPSX {
             if (value < 0) {
                 FLAG |= (uint)0x20_0000 >> (i - 1);
                 return 0;
-            } else if (value > 0xFF) {
+            }
+
+            if (value > 0xFF) {
                 FLAG |= (uint)0x20_0000 >> (i - 1);
                 return 0xFF;
             }
@@ -703,25 +835,30 @@ namespace ProjectPSX {
 
         private short setIR(int i, int value, bool lm) {
             if (lm && value < 0) {
-                FLAG |= (uint)(0x100_0000 >> (i - 1));
+                FLAG = (uint)(FLAG | (0x100_0000 >> (i - 1)));
                 return 0;
-            } else if (!lm && (value < -0x8000)) {
-                FLAG |= (uint)(0x100_0000 >> (i - 1));
-                return -0x8000;
-            } else if (value > 0x7FFF) {
-                FLAG |= (uint)(0x100_0000 >> (i - 1));
-                return 0x7FFF;
             }
 
+            if (!lm && (value < -0x8000)) {
+                FLAG = (uint)(FLAG | (0x100_0000 >> (i - 1)));
+                return -0x8000;
+            }
+
+            if (value > 0x7FFF) {
+                FLAG = (uint)(FLAG | (0x100_0000 >> (i - 1)));
+                return 0x7FFF;
+            }
             return (short)value;
         }
 
         private long setMAC(int i, long value) {
-            //Console.WriteLine((i) + " " + value.ToString("x16"));
+            //Console.WriteLine((i-1) + " " + value.ToString("x16"));
             if (value < -0x800_0000_0000) {
                 //Console.WriteLine("under");
                 FLAG |= (uint)(0x800_0000 >> (i - 1));
-            } else if (value > 0x7FF_FFFF_FFFF) {
+            }
+
+            if (value > 0x7FF_FFFF_FFFF) {
                 //Console.WriteLine("over");
                 FLAG |= (uint)(0x4000_0000 >> (i - 1));
             }
@@ -729,50 +866,66 @@ namespace ProjectPSX {
             return (value << 20) >> 20;
         }
 
-        private static short saturateRGB(int v) {
+        private long setM(int i, long value) {
+            //Console.WriteLine("M" + (i - 1) + " " + value.ToString("x16"));
+            if (value < -0x800_0000_0000) {
+                //Console.WriteLine("under");
+                FLAG |= (uint)(0x800_0000 >> (i - 1));
+            }
+
+            if (value > 0x7FF_FFFF_FFFF) {
+                //Console.WriteLine("over");
+                FLAG |= (uint)(0x4000_0000 >> (i - 1));
+            }
+
+            return value;
+        }
+
+        private short saturateRGB(int v) {
             short saturate = (short)v;
             if (saturate < 0x00) return 0x00;
             else if (saturate > 0x1F) return 0x1F;
             else return saturate;
         }
 
-        private static int leadingCount(uint v) {
-            uint sign = (v >> 31);
+        private int leadingCount(uint v) {
+            int sign = (int)((v & 0x80000000) >> 31);
             int leadingCount = 0;
+            int n = (int)v;
             for (int i = 0; i < 32; i++) {
-                if (v >> 31 != sign) break;
+                if ((n & 0x80000000) >> 31 != sign) break;
                 leadingCount++;
-                v <<= 1;
+                n <<= 1;
             }
             return leadingCount;
         }
 
-        internal uint loadData(uint fs) {
+        internal uint loadData(uint fs) {  // this function pulls vector components as packed 32-bit values
             uint value;
             switch (fs) {
                 case 00: value = V[0].XY; break;
-                case 01: value = (uint)V[0].z; break;
+                case 01: value = V[0].OZ; break;
                 case 02: value = V[1].XY; break;
-                case 03: value = (uint)V[1].z; break;
+                case 03: value = V[1].OZ; break;
                 case 04: value = V[2].XY; break;
-                case 05: value = (uint)V[2].z; break;
-                case 06: value = RGBC.val; break;
+                case 05: value = V[2].OZ; break;
+                case 06: value = RGBC.get(); break;
                 case 07: value = OTZ; break;
                 case 08: value = (uint)IR[0]; break;
                 case 09: value = (uint)IR[1]; break;
                 case 10: value = (uint)IR[2]; break;
                 case 11: value = (uint)IR[3]; break;
-                case 12: value = SXY[0].val; break;
-                case 13: value = SXY[1].val; break;
+                case 12: value = SXY[0].get(); break;
+                case 13: value = SXY[1].get(); break;
                 case 14: //Mirror
-                case 15: value = SXY[2].val; break;
+                case 15: value = SXY[2].get(); break;
                 case 16: value = SZ[0]; break;
                 case 17: value = SZ[1]; break;
                 case 18: value = SZ[2]; break;
                 case 19: value = SZ[3]; break;
-                case 20: value = RGB[0].val; break;
-                case 21: value = RGB[1].val; break;
-                case 22: value = RGB[2].val; break;
+                case 20: value = RGB[0].get(); break;
+                case 21: value = RGB[1].get(); break;
+                case 22: value = RGB[2].get(); break;
                 case 23: value = RES1; break; //Prohibited Register
                 case 24: value = (uint)MAC0; break;
                 case 25: value = (uint)MAC1; break;
@@ -780,7 +933,7 @@ namespace ProjectPSX {
                 case 27: value = (uint)MAC3; break;
                 case 28:/* value = IRGB; break;*/
                 case 29:/* value = ORGB; break;*/
-                    IRGB = (ushort)(saturateRGB(IR[3] / 0x80) << 10 | saturateRGB(IR[2] / 0x80) << 5 | (ushort)saturateRGB(IR[1] / 0x80));
+                    IRGB = (ushort)(saturateRGB(IR[3] / 0x80) << 10 | saturateRGB(IR[2] / 0x80) << 5 | saturateRGB(IR[1] / 0x80));
                     value = IRGB;
                     break;
                 case 30: value = (uint)LZCS; break;
@@ -799,28 +952,28 @@ namespace ProjectPSX {
             //Console.ReadLine();
             switch (fs) {
                 case 00: V[0].XY = v; break;
-                case 01: V[0].z = (short)v; break;
+                case 01: V[0].OZ = v; break;
                 case 02: V[1].XY = v; break;
-                case 03: V[1].z = (short)v; break;
+                case 03: V[1].OZ = v; break;
                 case 04: V[2].XY = v; break;
-                case 05: V[2].z = (short)v; break;
-                case 06: RGBC.val = v; break;
+                case 05: V[2].OZ = v; break;
+                case 06: RGBC.set(v); break;
                 case 07: OTZ = (ushort)v; break;
                 case 08: IR[0] = (short)v; break;
                 case 09: IR[1] = (short)v; break;
                 case 10: IR[2] = (short)v; break;
                 case 11: IR[3] = (short)v; break;
-                case 12: SXY[0].val = v; break;
-                case 13: SXY[1].val = v; break;
-                case 14: SXY[2].val = v; break;
-                case 15: SXY[0] = SXY[1]; SXY[1] = SXY[2]; SXY[2].val = v; break; //On load mirrors 0x14 on write cycles the fifo
+                case 12: SXY[0].set(v); break;
+                case 13: SXY[1].set(v); break;
+                case 14: SXY[2].set(v); break;
+                case 15: SXY[0] = SXY[1]; SXY[1] = SXY[2]; SXY[2].set(v); break; //On load mirrors 0x14 on write cycles the fifo
                 case 16: SZ[0] = (ushort)v; break;
                 case 17: SZ[1] = (ushort)v; break;
                 case 18: SZ[2] = (ushort)v; break;
                 case 19: SZ[3] = (ushort)v; break;
-                case 20: RGB[0].val = v; break;
-                case 21: RGB[1].val = v; break;
-                case 22: RGB[2].val = v; break;
+                case 20: RGB[0].set(v); break;
+                case 21: RGB[1].set(v); break;
+                case 22: RGB[2].set(v); break;
                 case 23: RES1 = v; break;
                 case 24: MAC0 = (int)v; break;
                 case 25: MAC1 = (int)v; break;
@@ -842,26 +995,26 @@ namespace ProjectPSX {
             uint value;
             switch (fs) {
                 case 00: value = RT.v1.XY; break;
-                case 01: value = (ushort)RT.v1.z | (uint)(RT.v2.x << 16); break;
-                case 02: value = (ushort)RT.v2.y | (uint)(RT.v2.z << 16); break;
+                case 01: value = (uint)(ushort)RT.v1.z | (uint)(RT.v2.x << 16); break;
+                case 02: value = (uint)(ushort)RT.v2.y | (uint)(RT.v2.z << 16); break;
                 case 03: value = RT.v3.XY; break;
-                case 04: value = (uint)RT.v3.z; break;
+                case 04: value = RT.v3.OZ; break;
                 case 05: value = (uint)TRX; break;
                 case 06: value = (uint)TRY; break;
                 case 07: value = (uint)TRZ; break;
                 case 08: value = LM.v1.XY; break;
-                case 09: value = (ushort)LM.v1.z | (uint)(LM.v2.x << 16); break;
-                case 10: value = (ushort)LM.v2.y | (uint)(LM.v2.z << 16); break;
+                case 09: value = (uint)(ushort)LM.v1.z | (uint)(LM.v2.x << 16); break;
+                case 10: value = (uint)(ushort)LM.v2.y | (uint)(LM.v2.z << 16); break;
                 case 11: value = LM.v3.XY; break;
-                case 12: value = (uint)LM.v3.z; break;
+                case 12: value = LM.v3.OZ; break;
                 case 13: value = (uint)RBK; break;
                 case 14: value = (uint)GBK; break;
                 case 15: value = (uint)BBK; break;
                 case 16: value = LRGB.v1.XY; break;
-                case 17: value = (ushort)LRGB.v1.z | (uint)(LRGB.v2.x << 16); break;
-                case 18: value = (ushort)LRGB.v2.y | (uint)(LRGB.v2.z << 16); break;
+                case 17: value = (uint)(ushort)LRGB.v1.z | (uint)(LRGB.v2.x << 16); break;
+                case 18: value = (uint)(ushort)LRGB.v2.y | (uint)(LRGB.v2.z << 16); break;
                 case 19: value = LRGB.v3.XY; break;
-                case 20: value = (uint)LRGB.v3.z; break;
+                case 20: value = LRGB.v3.OZ; break;
                 case 21: value = (uint)RFC; break;
                 case 22: value = (uint)GFC; break;
                 case 23: value = (uint)BFC; break;
@@ -891,7 +1044,7 @@ namespace ProjectPSX {
                 case 01: RT.v1.z = (short)v; RT.v2.x = (short)(v >> 16); break;
                 case 02: RT.v2.y = (short)v; RT.v2.z = (short)(v >> 16); break;
                 case 03: RT.v3.XY = v; break;
-                case 04: RT.v3.z = (short)v; break;
+                case 04: RT.v3.OZ = v; break;
                 case 05: TRX = (int)v; break;
                 case 06: TRY = (int)v; break;
                 case 07: TRZ = (int)v; break;
@@ -899,7 +1052,7 @@ namespace ProjectPSX {
                 case 09: LM.v1.z = (short)v; LM.v2.x = (short)(v >> 16); break;
                 case 10: LM.v2.y = (short)v; LM.v2.z = (short)(v >> 16); break;
                 case 11: LM.v3.XY = v; break;
-                case 12: LM.v3.z = (short)v; break;
+                case 12: LM.v3.OZ = v; break;
                 case 13: RBK = (int)v; break;
                 case 14: GBK = (int)v; break;
                 case 15: BBK = (int)v; break;
@@ -907,7 +1060,7 @@ namespace ProjectPSX {
                 case 17: LRGB.v1.z = (short)v; LRGB.v2.x = (short)(v >> 16); break;
                 case 18: LRGB.v2.y = (short)v; LRGB.v2.z = (short)(v >> 16); break;
                 case 19: LRGB.v3.XY = v; break;
-                case 20: LRGB.v3.z = (short)v; break;
+                case 20: LRGB.v3.OZ = v; break;
                 case 21: RFC = (int)v; break;
                 case 22: GFC = (int)v; break;
                 case 23: BFC = (int)v; break;
@@ -928,15 +1081,17 @@ namespace ProjectPSX {
         }
 
         private void debug() {
-            string gteDebug = "GTE CONTROL\n";
+            string gteDebug = $"GTE CONTROL\n";
             for (uint i = 0; i < 32; i++) {
-                gteDebug += $" {i:00}: {loadControl(i):x8}";
+                string register = i <= 9 ? "0" + i : i.ToString();
+                gteDebug += " " + register + ": " + loadControl(i).ToString("x8");
                 if ((i + 1) % 4 == 0) gteDebug += "\n";
             }
 
-            gteDebug += "GTE DATA\n";
+            gteDebug += $"GTE DATA\n";
             for (uint i = 0; i < 32; i++) {
-                gteDebug += $" {i:00}: {loadData(i):x8}";
+                string register = i <= 9 ? "0" + i : i.ToString();
+                gteDebug += " " + register + ": " + loadData(i).ToString("x8");
                 if ((i + 1) % 4 == 0) gteDebug += "\n";
             }
 

@@ -1,4 +1,4 @@
-using ProjectPSX.Devices.Input;
+﻿using ProjectPSX.Devices.Input;
 using ProjectPSX.Util;
 using System;
 using System.Collections.Generic;
@@ -108,6 +108,7 @@ namespace ProjectPSX {
             Console.WriteLine("Count of frames to trace - F6");
             Console.WriteLine("Trace GTE - F7");
             Console.WriteLine("Trace GPU - F8");
+            Console.WriteLine("Suspend/resume emulation - F9");
 
             var timer = new System.Timers.Timer(1000);
             timer.Elapsed += OnTimedEvent;
@@ -150,6 +151,7 @@ namespace ProjectPSX {
                 Console.WriteLine("Specify number of frames to capture when logging GTE/GPU:");
                 string input = Console.ReadLine();
                 try {
+                    
                     Globals.capframes = Int32.Parse(input);
                 }
                 catch (FormatException) {
@@ -159,19 +161,25 @@ namespace ProjectPSX {
             else
             if (e.KeyCode == Keys.F7) {
                 Console.WriteLine("GTE polygon calculating logged for " + Globals.capframes + " frames");
+                Globals.frameCounter = 0;
                 Globals.capturingGTE = true;
-                Globals.polycaptureCounter = Globals.capframes;
             }
             else
             if (e.KeyCode == Keys.F8) {
                 Console.WriteLine("GPU poly raster activity logged for " + Globals.capframes + " frames");
+                Globals.frameCounter = 0;
                 Globals.capturingGPU = true;
-                Globals.polycaptureCounter = Globals.capframes;
             }
             else
             if (e.KeyCode == Keys.F9) {
-                Console.WriteLine("Emulation paused.");
-                Globals.emuPaused = true;
+                if (Globals.emuPaused == false) {
+                    Console.WriteLine("Emulation suspended.");
+                    Globals.emuPaused = true;
+                }
+                else {
+                    Console.WriteLine("Emulation resumed.");
+                    Globals.emuPaused = false;
+                }
             }
             /*else
             if (e.KeyCode == Keys.F10) {
@@ -378,6 +386,7 @@ namespace ProjectPSX {
 
             try {
                 while (true) {
+                    if (Globals.emuPaused) continue;
                     psx.RunFrame();
                     int cyclesPerFrame = PSX_MHZ / 60;
                     int syncLoops = (cyclesPerFrame / (SYNC_CYCLES * (int) MIPS_UNDERCLOCK)) + 1;

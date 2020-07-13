@@ -2,6 +2,19 @@
 using ProjectPSX.Devices.Input;
 
 namespace ProjectPSX {
+
+    public static class Globals {
+
+        static public int polycaptureCounter;
+        static public int frameCounter;
+        static public int capframes;
+        static public bool capturingGTE;
+        static public bool capturingGPU;
+        static public bool emuPaused;
+        static public System.IO.FileStream GTEFile;
+        static public System.IO.FileStream GPUVerticesFile;
+        static public System.IO.FileStream GPUTexcoordsFile;
+    }
     public class ProjectPSX {
         const int PSX_MHZ = 33868800;
         const int SYNC_CYCLES = 100;
@@ -26,13 +39,22 @@ namespace ProjectPSX {
             int cyclesPerFrame = PSX_MHZ / 60;
             int syncLoops = (cyclesPerFrame / (SYNC_CYCLES * MIPS_UNDERCLOCK)) + 1;
 
-            for(int i = 0; i < syncLoops; i++) {
+            for (int i = 0; i < syncLoops; i++) {
                 for (int j = 0; j < SYNC_CYCLES; j++) {
                     cpu.Run();
                     //cpu.handleInterrupts();
                 }
                 bus.tick(SYNC_CYCLES * MIPS_UNDERCLOCK);
                 cpu.handleInterrupts();
+            }
+            Globals.frameCounter++;  // this is where to figure out frame numbers for tools that need it
+            if (Globals.frameCounter == Globals.capframes) {
+                if (Globals.capturingGTE) {
+                    Globals.capturingGTE = false;
+                }
+                if (Globals.capturingGPU) {
+                    Globals.capturingGPU = false;
+                }
             }
         }
 

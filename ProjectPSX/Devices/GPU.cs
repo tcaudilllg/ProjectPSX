@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -580,7 +580,7 @@ namespace ProjectPSX.Devices {
             if (Globals.capturingGPU) {  // GPU logging
 
                 string coords =
-                    "#Face\n"
+                    "#Face (frame " + Globals.frameCounter + ")\n"
                     + "v " + v0.x + " " + v0.y + "\n"
                     + "v " + v1.x + " " + v1.y + "\n"
                     + "v " + v2.x + " " + v2.y + "\n";
@@ -588,7 +588,7 @@ namespace ProjectPSX.Devices {
                 Globals.GPUVerticesFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
 
                 coords =
-                    "#Face\n"
+                    "#Face (frame " + Globals.frameCounter + ")\n"
                     + "v " + t0.x + " " + t0.y + "\n"
                     + "v " + t1.x + " " + t1.y + "\n"
                     + "v " + t2.x + " " + t2.y + "\n";
