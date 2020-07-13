@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 namespace ProjectPSX {
@@ -582,6 +582,12 @@ namespace ProjectPSX {
         }
 
         private void RTPT() { //Perspective Transformation Triple
+
+            if (Globals.capturingGTE) {  // GTE logging
+                string coords = "#Face\n";
+                Globals.GTEFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
+            }
+
             RTPS(0);
             RTPS(1);
             RTPS(2);
@@ -591,6 +597,13 @@ namespace ProjectPSX {
             //IR1 = MAC1 = (TRX*1000h + RT11*VX0 + RT12*VY0 + RT13*VZ0) SAR (sf*12)
             //IR2 = MAC2 = (TRY*1000h + RT21*VX0 + RT22*VY0 + RT23*VZ0) SAR (sf*12)
             //IR3 = MAC3 = (TRZ*1000h + RT31*VX0 + RT32*VY0 + RT33*VZ0) SAR (sf*12)
+
+            if (Globals.capturingGTE) {  // GTE logging
+
+                    string coords = "v " + V[r].x + " " + V[r].y + " " + V[r].z + "\n";
+
+                    Globals.GTEFile.Write(System.Text.Encoding.UTF8.GetBytes(coords), 0, coords.Length);
+            }
 
             MAC1 = (int)setMAC(1, (TRX * 0x1000 + RT.v1.x * V[r].x + RT.v1.y * V[r].y + RT.v1.z * V[r].z) >> (sf * 12));
             MAC2 = (int)setMAC(2, (TRY * 0x1000 + RT.v2.x * V[r].x + RT.v2.y * V[r].y + RT.v2.z * V[r].z) >> (sf * 12));
